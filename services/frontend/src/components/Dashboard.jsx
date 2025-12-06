@@ -1,4 +1,5 @@
 import { useMarkerWebSocket } from '../hooks/useMarkerWebSocket'
+import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
 
 function Dashboard() {
   const { 
@@ -9,8 +10,26 @@ function Dashboard() {
     calibrate,
     reset,
     clearImpact,
-    toggleAxes
+    toggleAxes,
+    setShowAxes
   } = useMarkerWebSocket()
+
+  // Get axes visibility state from backend
+  let showAxes = markerData?.show_axes ?? true
+
+  // Speech recognition for voice commands
+  const {
+    isListening,
+    isSupported: isSpeechSupported,
+    lastCommand,
+    transcript,
+    toggleListening,
+  } = useSpeechRecognition({
+    onCalibrate: calibrate,
+    onAxesOn: () => setShowAxes(true),
+    onAxesOff: () => setShowAxes(false),
+    onReset: reset,
+  })
 
   // Determine tracking status from marker data
   let isTracking = false
@@ -34,9 +53,6 @@ function Dashboard() {
   let needsCalibration = currentState === 'idle'
   let isCalibrating = currentState === 'calibrating'
   let swingDetected = currentState === 'swing_detected'
-  
-  // Get axes visibility state from backend
-  let showAxes = markerData?.show_axes ?? true
 
   return (
     <div className="min-h-screen p-4 md:p-8 lg:p-12">
@@ -52,7 +68,16 @@ function Dashboard() {
         </div>
         
         {/* Control Buttons */}
-        <div className="flex gap-3 flex-wrap">
+        <div className="flex gap-3 flex-wrap items-center">
+          {/* Voice Control Button */}
+          {isSpeechSupported && (
+            <MicrophoneButton
+              isListening={isListening}
+              onClick={toggleListening}
+              lastCommand={lastCommand}
+              transcript={transcript}
+            />
+          )}
           <button
             onClick={calibrate}
             disabled={connectionStatus !== 'connected' || isCalibrating}
@@ -297,6 +322,83 @@ function StatusBanner({ isConnected, isReady, needsCalibration, isCalibrating, s
   }
 
   return null
+}
+
+// =============================================================================
+// MICROPHONE BUTTON (Voice Control)
+// =============================================================================
+
+function MicrophoneButton({ isListening, onClick, lastCommand, transcript }) {
+  // Map command to display text
+  let commandDisplay = ''
+  if (lastCommand === 'calibrate') {
+    commandDisplay = 'Calibrating...'
+  } else if (lastCommand === 'axes_on') {
+    commandDisplay = 'Axes ON'
+  } else if (lastCommand === 'axes_off') {
+    commandDisplay = 'Axes OFF'
+  } else if (lastCommand === 'reset') {
+    commandDisplay = 'Reset'
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Listening indicator - to the left of button */}
+      {isListening && (
+        <div className="flex items-center gap-2 mr-1">
+          {/* Command feedback or transcript */}
+          {lastCommand ? (
+            <span className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-medium border border-emerald-500/30">
+              ✓ {commandDisplay}
+            </span>
+          ) : transcript ? (
+            <span className="px-2 py-1 rounded-lg bg-gray-700/80 text-gray-300 text-xs max-w-[120px] truncate">
+              "{transcript}"
+            </span>
+          ) : null}
+          
+          {/* Sound wave animation - slower */}
+          <div className="flex items-center gap-0.5">
+            <span className="w-1 h-3 bg-pink-500 rounded-full animate-[soundwave_1.2s_ease-in-out_infinite]" style={{ animationDelay: '0ms' }} />
+            <span className="w-1 h-5 bg-pink-500 rounded-full animate-[soundwave_1.2s_ease-in-out_infinite]" style={{ animationDelay: '150ms' }} />
+            <span className="w-1 h-4 bg-pink-500 rounded-full animate-[soundwave_1.2s_ease-in-out_infinite]" style={{ animationDelay: '300ms' }} />
+            <span className="w-1 h-6 bg-pink-500 rounded-full animate-[soundwave_1.2s_ease-in-out_infinite]" style={{ animationDelay: '450ms' }} />
+            <span className="w-1 h-3 bg-pink-500 rounded-full animate-[soundwave_1.2s_ease-in-out_infinite]" style={{ animationDelay: '600ms' }} />
+          </div>
+        </div>
+      )}
+
+      {/* Microphone Button */}
+      <button
+        onClick={onClick}
+        className={`relative p-3 rounded-xl font-semibold text-sm transition-all duration-300 ${
+          isListening
+            ? 'bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-lg shadow-pink-500/40 scale-105'
+            : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
+        }`}
+        title={isListening ? 'Voice control active - Click to stop' : 'Enable voice control'}
+      >
+        {/* Pulse animation when listening */}
+        {isListening && (
+          <>
+            <span className="absolute inset-0 rounded-xl bg-pink-500 animate-ping opacity-30" />
+            <span className="absolute inset-0 rounded-xl bg-pink-500/20 animate-pulse" />
+          </>
+        )}
+        
+        {/* Microphone Icon */}
+        <svg 
+          xmlns="http://www.w3.org/2000/svg" 
+          viewBox="0 0 24 24" 
+          fill="currentColor" 
+          className="w-5 h-5 relative z-10"
+        >
+          <path d="M8.25 4.5a3.75 3.75 0 117.5 0v8.25a3.75 3.75 0 11-7.5 0V4.5z" />
+          <path d="M6 10.5a.75.75 0 01.75.75v1.5a5.25 5.25 0 1010.5 0v-1.5a.75.75 0 011.5 0v1.5a6.751 6.751 0 01-6 6.709v2.291h3a.75.75 0 010 1.5h-7.5a.75.75 0 010-1.5h3v-2.291a6.751 6.751 0 01-6-6.709v-1.5A.75.75 0 016 10.5z" />
+        </svg>
+      </button>
+    </div>
+  )
 }
 
 // =============================================================================
